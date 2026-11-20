@@ -1047,53 +1047,15 @@ impl Config {
     }
 
     pub fn get_rendezvous_server() -> String {
-        let mut rendezvous_server = EXE_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if rendezvous_server.is_empty() {
-            rendezvous_server = Self::get_option("custom-rendezvous-server");
-        }
-        if rendezvous_server.is_empty() {
-            rendezvous_server = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-        }
-        if rendezvous_server.is_empty() {
-            rendezvous_server = CONFIG2.read().unwrap().rendezvous_server.clone();
-        }
-        if rendezvous_server.is_empty() {
-            rendezvous_server = Self::get_rendezvous_servers()
-                .drain(..)
-                .next()
-                .unwrap_or_default();
-        }
-        if !rendezvous_server.contains(':') {
-            rendezvous_server = format!("{rendezvous_server}:{RENDEZVOUS_PORT}");
-        }
-        rendezvous_server
+        // [forced-server build] Always use our own server, ignoring any stale
+        // config left by an official RustDesk installation.
+        format!("{}:{}", RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT)
     }
 
     pub fn get_rendezvous_servers() -> Vec<String> {
-        let s = EXE_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if !s.is_empty() {
-            return vec![s];
-        }
-        let s = Self::get_option("custom-rendezvous-server");
-        if !s.is_empty() {
-            return vec![s];
-        }
-        let s = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if !s.is_empty() {
-            return vec![s];
-        }
-        let serial_obsolute = CONFIG2.read().unwrap().serial > SERIAL;
-        if serial_obsolute {
-            let ss: Vec<String> = Self::get_option("rendezvous-servers")
-                .split(',')
-                .filter(|x| x.contains('.'))
-                .map(|x| x.to_owned())
-                .collect();
-            if !ss.is_empty() {
-                return ss;
-            }
-        }
-        return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
+        // [forced-server build] Never fall back to official/default servers
+        // from an old config file.
+        RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect()
     }
 
     pub fn reset_online() {
@@ -1360,6 +1322,11 @@ impl Config {
         let mut res = DEFAULT_SETTINGS.read().unwrap().clone();
         res.extend(CONFIG2.read().unwrap().options.clone());
         res.extend(OVERWRITE_SETTINGS.read().unwrap().clone());
+        // [forced-server build] Make the Settings page show our server too.
+        res.insert(
+            "custom-rendezvous-server".to_string(),
+            RENDEZVOUS_SERVERS[0].to_string(),
+        );
         res
     }
 
@@ -1379,6 +1346,10 @@ impl Config {
     }
 
     pub fn get_option(k: &str) -> String {
+        // [forced-server build] Override stale official server settings.
+        if k == "custom-rendezvous-server" {
+            return RENDEZVOUS_SERVERS[0].to_string();
+        }
         get_or(
             &OVERWRITE_SETTINGS,
             &CONFIG2.read().unwrap().options,
